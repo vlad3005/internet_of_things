@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sensor Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    canvas {
+      max-width: 100%;
+      margin-bottom: 20px;
+      border: 1px solid #eee;
+      padding: 10px;
+    }
+    .sensor-value {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 10px 0;
+      color: #333;
+      padding: 5px 10px;
+      background: #f5f5f5;
+      border-radius: 5px;
+      display: inline-block;
+    }
+    h2 {
+      color: #444;
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sensor Dashboard</h1>
+
+  <div>
+    <h2>Температура</h2>
+    <div class="sensor-value" id="tempValue">Загрузка...</div>
+    <canvas id="tempChart"></canvas>
+
+    <h2>Влажность</h2>
+    <div class="sensor-value" id="humidityValue">Загрузка...</div>
+    <canvas id="humidityChart"></canvas>
+
+    <h2>CO₂</h2>
+    <div class="sensor-value" id="co2Value">Загрузка...</div>
+    <canvas id="co2Chart"></canvas>
+  </div>
+
+  <script>
+    let tempChart, humidityChart, co2Chart;
+
+    async function fetchData(sensorId) {
+      try {
+        const res = await fetch(`/api/readings/${sensorId}`);
+        if (!res.ok) throw new Error(`Ошибка HTTP! Статус: ${res.status}`);
+        return await res.json();
+      } catch (error) {
+        console.error('Ошибка получения данных:', error);
+        return [];
+      }
+    }
+
+    function createChart(ctx, label, color) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: label,
+            data: [],
+            borderColor: color,
+            borderWidth: 2,
+            pointRadius: 2,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          scales: {
+            x: {
+              type: 'time',
+              time: {
+                parser: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+                tooltipFormat: 'HH:mm:ss',
+                unit: 'second'
+              }
+            },
+            y: {
+              beginAtZero: false,
+              title: {
+                display: true,
+                text: 'Значение'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function updateLatestReading(elementId, readings) {
+      const valueElement = document.getElementById(elementId);
+      if (!readings.length) {
+        valueElement.textContent = "Нет данных";
+        return;
+      }
+      const latest = readings[readings.length - 1];
+      valueElement.textContent = `${latest.data.toFixed(1)} ${getUnit(elementId)}`;
+      valueElement.style.color = getColor(elementId);
+    }
+
+    function getUnit(elementId) {
+      return {
+        'tempValue': '°C',
+        'humidityValue': '%',
+        'co2Value': 'ppm'
+      }[elementId];
+    }
+
+    function getColor(elementId) {
+      return {
+        'tempValue': '#ff4444',
+        'humidityValue': '#4444ff',
+        'co2Value': '#44cc44'
+      }[elementId];
+    }
+
+    function update(chart, readings) {
+      chart.data.labels = readings.map(r => new Date(r.date));
+      chart.data.datasets[0].data = readings.map(r => r.data);
+      chart.update();
+    }
+
+    async function updateCharts() {
+      try {
+        const [temp, humidity, co2] = await Promise.all([
+          fetchData(1),
+          fetchData(2),
+          fetchData(3)
+        ]);
+
+        update(tempChart, temp);
+        update(humidityChart, humidity);
+        update(co2Chart, co2);
+
+        updateLatestReading('tempValue', temp);
+        updateLatestReading('humidityValue', humidity);
+        updateLatestReading('co2Value', co2);
+      } catch (error) {
+        console.error('Ошибка обновления:', error);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      tempChart = createChart(document.getElementById('tempChart'), 'Температура (°C)', '#ff4444');
+      humidityChart = createChart(document.getElementById('humidityChart'), 'Влажность (%)', '#4444ff');
+      co2Chart = createChart(document.getElementById('co2Chart'), 'CO₂ (ppm)', '#44cc44');
+
+      updateCharts();
+      setInterval(updateCharts, 5000);
+    });
+  </script>
+</body>
+</html>
